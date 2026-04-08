@@ -21,18 +21,56 @@ export default async (request) => {
       });
     }
 
+    // --- Phone Number Formatting ---
+    // Remove any non-digit characters (spaces, +, dashes, etc.)
+    let cleanedNumber = phone_number.replace(/\D/g, '');
+
+    // Check if it's a 12-digit international number starting with 260 (Zambia)
+    if (cleanedNumber.length === 12 && cleanedNumber.startsWith('260')) {
+      // Convert '26097xxxxxxx' to '097xxxxxxx'
+      cleanedNumber = `0${cleanedNumber.slice(3)}`;
+    }
+    // Check if it's a 9-digit number (missing leading zero)
+    else if (cleanedNumber.length === 9) {
+      cleanedNumber = `0${cleanedNumber}`;
+    }
+    
+    // Final validation: must be 10 digits starting with 0
+    if (!cleanedNumber.match(/^0\d{9}$/)) {
+      console.error(`Invalid phone number format: ${phone_number} -> ${cleanedNumber}`);
+      return new Response(JSON.stringify({
+        success: false,
+        message: `Invalid phone number format. Please use a 10-digit number starting with 0 (e.g., 097xxxxxxx).`
+      }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+
     // Access your secret environment variable
     const authId = Netlify.env.get('MONEY_UNIFY_AUTH_ID');
+    if (!authId) {
+      console.error('MONEY_UNIFY_AUTH_ID environment variable is not set');
+      return new Response(JSON.stringify({
+        success: false,
+        message: 'Payment service configuration error. Please contact support.'
+      }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
 
     // Prepare the request to MoneyUnify
-    // Note: Add 'provider' if the API requires the network (MTN/Airtel)
     const requestBody = new URLSearchParams({
-      from_payer: phone_number,
-      amount: amount,
+      from_payer: cleanedNumber,
+      amount: amount.toString(),
       auth_id: authId,
-      // Uncomment if the API needs the network parameter:
-      // provider: network || 'mtn'
+      provider: network || 'mtn' // Default to MTN if not provided
     });
+
+    // Log the request (auth_id is partially masked for security)
+    const maskedAuthId = authId.slice(0, 8) + '...' + authId.slice(-4);
+    console.log(`MoneyUnify Request: from_payer=${cleanedNumber}, amount=${amount}, provider=${network || 'mtn'}, auth_id=${maskedAuthId}`);
 
     const moneyUnifyResponse = await fetch('https://api.moneyunify.one/payments/request', {
       method: 'POST',
@@ -43,16 +81,13 @@ export default async (request) => {
       body: requestBody
     });
 
-    // --- START: Detailed error handling ---
-    // If the response is not OK (e.g., 400, 500), capture the error details
+    // Handle non-OK responses (400, 500, etc.)
     if (!moneyUnifyResponse.ok) {
       let errorDetails;
       const responseText = await moneyUnifyResponse.text();
       try {
-        // Try to parse as JSON
         errorDetails = JSON.parse(responseText);
       } catch (e) {
-        // If not JSON, use the raw text
         errorDetails = responseText;
       }
 
@@ -62,35 +97,35 @@ export default async (request) => {
         details: errorDetails
       });
 
-      // Return a detailed error to the frontend
       return new Response(JSON.stringify({
         success: false,
-        message: `MoneyUnify error: ${moneyUnifyResponse.status} - ${moneyUnifyResponse.statusText}`,
+        message: errorDetails?.message || `MoneyUnify error: ${moneyUnifyResponse.status}`,
         details: errorDetails
       }), {
         status: 400,
         headers: { 'Content-Type': 'application/json' }
       });
     }
-    // --- END: Detailed error handling ---
 
-    // If response is OK, parse JSON as usual
+    // Parse successful response
     const data = await moneyUnifyResponse.json();
 
     if (data && !data.isError) {
+      console.log(`Payment initiated successfully. Transaction ID: ${data.data?.transaction_id}`);
       return new Response(JSON.stringify({
         success: true,
-        transactionId: data.data.transaction_id,
-        message: data.message
+        transactionId: data.data?.transaction_id,
+        message: data.message || 'Payment prompt sent to your phone.'
       }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' }
       });
     } else {
       // API returned an isError flag
+      console.error('MoneyUnify returned error:', data);
       return new Response(JSON.stringify({
         success: false,
-        message: data.message || 'Payment initiation failed',
+        message: data?.message || 'Payment initiation failed',
         details: data
       }), {
         status: 400,
@@ -98,10 +133,10 @@ export default async (request) => {
       });
     }
   } catch (error) {
-    console.error('Payment initiation error:', error);
+    console.error('Payment initiation exception:', error);
     return new Response(JSON.stringify({
       success: false,
-      message: 'An error occurred on our server. Please try again later.',
+      message: 'An unexpected error occurred. Please try again later.',
       error: error.message
     }), {
       status: 500,
