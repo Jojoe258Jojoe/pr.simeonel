@@ -17,7 +17,8 @@ form.addEventListener('submit', async (event) => {
     };
     
     try {
-        const response = await fetch('/.netlify/functions/initiate-payment', {
+        // ✅ Changed to /api/initiate-payment
+        const response = await fetch('/api/initiate-payment', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -45,7 +46,8 @@ form.addEventListener('submit', async (event) => {
 
 async function checkPaymentStatus(transactionId) {
     const interval = setInterval(async () => {
-        const statusResponse = await fetch(`/.netlify/functions/check-status?transactionId=${transactionId}`);
+        // ✅ Changed to /api/check-status
+        const statusResponse = await fetch(`/api/check-status?transactionId=${transactionId}`);
         const statusResult = await statusResponse.json();
         
         if (statusResult.status === 'successful') {
