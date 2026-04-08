@@ -1,7 +1,6 @@
 // netlify/edge-functions/check-status.js
 
 export default async (request, context) => {
-  // Only allow GET requests
   if (request.method !== 'GET') {
     return new Response(JSON.stringify({ success: false, message: 'Method Not Allowed' }), {
       status: 405,
@@ -10,7 +9,6 @@ export default async (request, context) => {
   }
 
   try {
-    // Get the transactionId from the URL's query parameters
     const url = new URL(request.url);
     const transactionId = url.searchParams.get('transactionId');
     
@@ -21,7 +19,6 @@ export default async (request, context) => {
       });
     }
 
-    // Access your secret environment variable
     const authId = Netlify.env.get('MONEY_UNIFY_AUTH_ID');
 
     const requestBody = new URLSearchParams({
@@ -69,5 +66,5 @@ export default async (request, context) => {
   }
 };
 
-// Define the path where this function will be invoked
-export const config = { path: "/api/check-status" };
+// ✅ Changed path to match what your frontend calls
+export const config = { path: "/.netlify/functions/check-status" };
