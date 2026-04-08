@@ -10,10 +10,8 @@ export default async (request, context) => {
   }
 
   try {
-    // Parse the incoming request body
     const { amount, phone_number } = await request.json();
     
-    // Validate required fields
     if (!amount || !phone_number) {
       return new Response(JSON.stringify({ success: false, message: 'Missing amount or phone number' }), {
         status: 400,
@@ -21,10 +19,8 @@ export default async (request, context) => {
       });
     }
 
-    // Access your secret environment variable
     const authId = Netlify.env.get('MONEY_UNIFY_AUTH_ID');
 
-    // Prepare the request to MoneyUnify
     const requestBody = new URLSearchParams({
       from_payer: phone_number,
       amount: amount,
@@ -72,5 +68,5 @@ export default async (request, context) => {
   }
 };
 
-// Define the path where this function will be invoked
-export const config = { path: "/api/initiate-payment" };
+//  Changed path to match what your frontend calls
+export const config = { path: "/.netlify/functions/initiate-payment" };
