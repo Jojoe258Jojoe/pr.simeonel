@@ -11,7 +11,7 @@ export default async (request) => {
 
   try {
     // Parse the incoming request body
-    const { amount, phone_number } = await request.json();
+    const { amount, phone_number, network } = await request.json();
 
     // Validate required fields
     if (!amount || !phone_number) {
@@ -25,10 +25,13 @@ export default async (request) => {
     const authId = Netlify.env.get('MONEY_UNIFY_AUTH_ID');
 
     // Prepare the request to MoneyUnify
+    // Note: Add 'provider' if the API requires the network (MTN/Airtel)
     const requestBody = new URLSearchParams({
       from_payer: phone_number,
       amount: amount,
-      auth_id: authId
+      auth_id: authId,
+      // Uncomment if the API needs the network parameter:
+      // provider: network || 'mtn'
     });
 
     const moneyUnifyResponse = await fetch('https://api.moneyunify.one/payments/request', {
@@ -40,6 +43,38 @@ export default async (request) => {
       body: requestBody
     });
 
+    // --- START: Detailed error handling ---
+    // If the response is not OK (e.g., 400, 500), capture the error details
+    if (!moneyUnifyResponse.ok) {
+      let errorDetails;
+      const responseText = await moneyUnifyResponse.text();
+      try {
+        // Try to parse as JSON
+        errorDetails = JSON.parse(responseText);
+      } catch (e) {
+        // If not JSON, use the raw text
+        errorDetails = responseText;
+      }
+
+      console.error('MoneyUnify API Error:', {
+        status: moneyUnifyResponse.status,
+        statusText: moneyUnifyResponse.statusText,
+        details: errorDetails
+      });
+
+      // Return a detailed error to the frontend
+      return new Response(JSON.stringify({
+        success: false,
+        message: `MoneyUnify error: ${moneyUnifyResponse.status} - ${moneyUnifyResponse.statusText}`,
+        details: errorDetails
+      }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+    // --- END: Detailed error handling ---
+
+    // If response is OK, parse JSON as usual
     const data = await moneyUnifyResponse.json();
 
     if (data && !data.isError) {
@@ -52,9 +87,11 @@ export default async (request) => {
         headers: { 'Content-Type': 'application/json' }
       });
     } else {
+      // API returned an isError flag
       return new Response(JSON.stringify({
         success: false,
-        message: data.message || 'Payment initiation failed'
+        message: data.message || 'Payment initiation failed',
+        details: data
       }), {
         status: 400,
         headers: { 'Content-Type': 'application/json' }
@@ -64,7 +101,8 @@ export default async (request) => {
     console.error('Payment initiation error:', error);
     return new Response(JSON.stringify({
       success: false,
-      message: 'An error occurred on our server. Please try again later.'
+      message: 'An error occurred on our server. Please try again later.',
+      error: error.message
     }), {
       status: 500,
       headers: { 'Content-Type': 'application/json' }
